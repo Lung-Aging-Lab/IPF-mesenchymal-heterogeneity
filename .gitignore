@@ -1,0 +1,8 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+*.ipynb_checkpoints/
+# Directories whose name ends with "figures"
+*figures/

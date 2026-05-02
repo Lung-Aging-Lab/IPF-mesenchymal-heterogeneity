@@ -1,0 +1,278 @@
+---
+title: "Figure 7 and Supplementary Figure 8"
+author: "Hu Chen"
+date: '`r Sys.Date()`'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+library(readxl)
+library(qs)
+library(scales)
+library(tidyr)
+save.path <- "Supplementary_8_figures"
+if (!dir.exists(save.path)) {
+  dir.create(save.path, recursive = TRUE)
+}
+```
+
+
+```{r,  message=FALSE, warning=FALSE}
+WL_seu <- qread("/fs/ess/PAS2148/huchen/fibroblasts_data/WL_fibroblasts.qs")
+WL_seu$Condition <- factor(
+  WL_seu$Condition,
+  levels = 
+    c('Aged control', 'IPF upper lobe', 'IPF lower lobe'))
+
+WL_seu$Protocol_Passage_Condition <- paste0('Lung Tissue ', WL_seu$Condition)
+WL_seu$Protocol_Passage_Condition <- factor(
+  WL_seu$Protocol_Passage_Condition,
+  levels = 
+    c('Lung Tissue Aged control', 'Lung Tissue IPF upper lobe', 'Lung Tissue IPF lower lobe'))
+
+Cultured_seu <- qread("/fs/ess/PAS2148/huchen/fibroblasts_data/Cultured_fibroblasts.qs")
+Cultured_seu$Protocol <- factor(
+  Cultured_seu$Protocol,
+  levels = 
+    c('WLCS', 'Negative Fraction', 'Outgrowth'))
+Cultured_seu$Passage <- factor(
+  Cultured_seu$Passage,
+  levels = 
+    c('Initial', 'Final'))
+Cultured_seu$annotation <- factor(Cultured_seu$annotation,
+                                  levels = c(
+                                    'Alveolar 1', 'Alveolar 2', 'Adventitial', 'Inflammatory', 'SMCs', 'Senescence-like', 'Proliferating'
+                                  ))
+Cultured_seu$Protocol_Passage_Condition <- factor(
+  Cultured_seu$Protocol_Passage_Condition,
+  levels = c(
+    'WLCS Aged control Initial', 'WLCS Aged control Final',
+    'WLCS IPF upper lobe Initial', 'WLCS IPF upper lobe Final',
+    'WLCS IPF lower lobe Initial', 'WLCS IPF lower lobe Final',
+    'Negative Fraction Aged control Initial', 'Negative Fraction Aged control Final',
+    'Negative Fraction IPF upper lobe Initial', 'Negative Fraction IPF upper lobe Final',
+    'Negative Fraction IPF lower lobe Initial', 'Negative Fraction IPF lower lobe Final',
+    'Outgrowth Aged control Initial', 'Outgrowth Aged control Final',
+    'Outgrowth IPF upper lobe Initial', 'Outgrowth IPF upper lobe Final'
+  )
+)
+all_condition_levels <- c("Lung Tissue Aged control",
+                          'WLCS Aged control Initial', 'WLCS Aged control Final',
+                          'Negative Fraction Aged control Initial', 'Negative Fraction Aged control Final',
+                          'Outgrowth Aged control Initial', 'Outgrowth Aged control Final',
+                          
+                          "Lung Tissue IPF upper lobe", 'WLCS IPF upper lobe Initial', 'WLCS IPF upper lobe Final',
+                          'Negative Fraction IPF upper lobe Initial', 'Negative Fraction IPF upper lobe Final',
+                          'Outgrowth IPF upper lobe Initial', 'Outgrowth IPF upper lobe Final',
+                          
+                          "Lung Tissue IPF lower lobe", 'WLCS IPF lower lobe Initial', 'WLCS IPF lower lobe Final',
+                          'Negative Fraction IPF lower lobe Initial', 'Negative Fraction IPF lower lobe Final')
+
+# alveolar
+plot_gene_expression_violin <- function(seu_obj1, seu_obj2, markers, annotation_type1, 
+                                        annotation_type2,
+                                        condition_levels = all_condition_levels,
+                                        width = 16, height = 5) {
+  # Check if annotation exists in each object
+  has_annotation1 <- annotation_type1 %in% seu_obj1$annotation
+  has_annotation2 <- annotation_type2 %in% seu_obj2$annotation
+  
+  # Fetch expression data conditionally for seu_obj1
+  if (has_annotation1) {
+    subset1 <- subset(seu_obj1, annotation == annotation_type1)
+    expr1 <- FetchData(subset1, vars = c(markers, "Protocol_Passage_Condition"))
+    expr1_long <- expr1 %>%
+      pivot_longer(cols = all_of(markers), names_to = "gene", values_to = "expression") %>%
+      mutate(dataset = "seu_obj1")
+  } else {
+    expr1_long <- data.frame(
+      Protocol_Passage_Condition = factor(levels = condition_levels)[0],
+      gene = factor(levels = markers)[0],
+      expression = numeric(0),
+      dataset = character(0),
+      stringsAsFactors = FALSE
+    )
+  }
+  
+  # Fetch expression data conditionally for seu_obj2
+  if (has_annotation2) {
+    subset2 <- subset(seu_obj2, annotation == annotation_type2)
+    expr2 <- FetchData(subset2, vars = c(markers, "Protocol_Passage_Condition"))
+    expr2_long <- expr2 %>%
+      pivot_longer(cols = all_of(markers), names_to = "gene", values_to = "expression") %>%
+      mutate(dataset = "seu_obj2")
+  } else {
+    expr2_long <- data.frame(
+      Protocol_Passage_Condition = factor(levels = condition_levels)[0],
+      gene = factor(levels = markers)[0],
+      expression = numeric(0),
+      dataset = character(0),
+      stringsAsFactors = FALSE
+    )
+  }
+  
+  # Combine data
+  combined_expr_long <- bind_rows(expr1_long, expr2_long)
+  
+  # Set factor levels
+  combined_expr_long$gene <- factor(combined_expr_long$gene, levels = markers)
+  combined_expr_long$Protocol_Passage_Condition <- factor(
+    combined_expr_long$Protocol_Passage_Condition,
+    levels = condition_levels
+  )
+  
+  # Create plot
+  p <- ggplot(combined_expr_long, aes(x = expression, y = Protocol_Passage_Condition, fill = gene)) +
+    geom_violin(scale = "width", trim = TRUE, adjust = 1, color = "black") +
+    facet_wrap(~ gene, nrow = 1, strip.position = "top", scales = "free_x") +
+    theme_classic() +
+    theme(
+      strip.background = element_blank(),
+      strip.text = element_text(size = 10, face = "bold"),
+      axis.text.y = element_text(size = 10, color = "black"),
+      axis.text.x = element_text(size = 10, color = "black"),
+      panel.spacing = unit(0, "lines"),
+      axis.line = element_line(color = "black"),
+      legend.position = "none",
+      panel.border = element_rect(color = "black", fill = NA)
+    ) +
+    xlab("") +
+    ylab("") +
+    scale_x_continuous(
+      breaks = function(x) pretty_breaks(n = 3)(x)[pretty_breaks(n = 4)(x) != 0]
+    ) +
+    scale_y_discrete(limits = rev(levels(combined_expr_long$Protocol_Passage_Condition)))
+  
+  return(p)
+}
+```
+
+ Alveolar 1
+```{r, results='hide', fig.width = 14, fig.height = 5}
+
+# Alveolar 1
+alveolar_markers <- c("NPNT", "CES1", "WNT2", "TCF21", "INMT", "FIBIN",
+                      "AOC3", "GPM6B", "SCN7A", "FMO2", "CYP4B1", "LIMCH1",
+                      "FGFR4", "ITGA8", "RARRES2", "GPC3")
+p <- plot_gene_expression_violin(
+  seu_obj1 = WL_seu,
+  seu_obj2 = Cultured_seu,
+  markers = alveolar_markers,
+  annotation_type1 = 'Alveolar',
+  annotation_type2= 'Alveolar 1'
+)
+pdf(file.path(save.path, "wl_alveolar_cultured_alveolar1_change.pdf"), width = 14, height = 5)
+print(p + theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")))
+dev.off()
+p
+
+```
+ Alveolar 2
+```{r, results='hide', fig.width = 14, fig.height = 5}
+p <- plot_gene_expression_violin(
+  seu_obj1 = WL_seu,
+  seu_obj2 = Cultured_seu,
+  markers = alveolar_markers,
+  annotation_type1 = 'Alveolar',
+  annotation_type2= 'Alveolar 2'
+)
+pdf(file.path(save.path, "wl_alveolar_cultured_alveolar2_change.pdf"), width = 14, height = 5)
+print(p + theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")))
+dev.off()
+p
+```
+
+Adventitial
+
+```{r, results='hide', fig.width = 6, fig.height = 5}
+adventitial_markers <- c("MFAP5", "SCARA5", "PTGIS", "IGFBP6", "SFRP2", "PI16")
+p <- plot_gene_expression_violin(
+  seu_obj1 = WL_seu,
+  seu_obj2 = Cultured_seu,
+  markers = adventitial_markers,
+  annotation_type1 = 'Adventitial',
+  annotation_type2 = 'Adventitial'
+)
+pdf(file.path(save.path, "adventitial_change.pdf"), width = 6, height = 5)
+print(p + theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")))
+dev.off()
+p
+```
+
+
+Inflammatory
+```{r, results='hide', fig.width = 6, fig.height = 5}
+inflammatory_markers <- c("CXCL2", "CXCL8", "CCL2", "CXCL12", "HAS2", "PTGDS")
+p <- plot_gene_expression_violin(
+  seu_obj1 = WL_seu,
+  seu_obj2 = Cultured_seu,
+  markers = inflammatory_markers,
+  annotation_type1 = 'Inflammatory',
+  annotation_type2 = 'Inflammatory'
+)
+pdf(file.path(save.path, "inflammatory_change.pdf"), width = 6, height = 5)
+print(p + theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")))
+dev.off()
+p
+```
+
+
+SMC
+```{r, results='hide', fig.width = 5, fig.height = 5}
+SMCs_markers <- c("MYH11", "ACTA2", "LMOD1", "MYL9")
+p <- plot_gene_expression_violin(
+  seu_obj1 = WL_seu,
+  seu_obj2 = Cultured_seu,
+  markers = SMCs_markers,
+  annotation_type1 = 'SMCs',
+  annotation_type2 = 'SMCs'
+)
+pdf(file.path(save.path, "SMCs_change.pdf"), width = 5, height = 5)
+print(p + theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")))
+dev.off()
+```
+
+Senescence-like 
+```{r, results='hide', fig.width = 5, fig.height = 5}
+# Senescence-like 
+Senescence_markers <- c("CDKN1A", "GDF15")
+p <- plot_gene_expression_violin(
+  seu_obj1 = WL_seu,
+  seu_obj2 = Cultured_seu,
+  markers = Senescence_markers,
+  annotation_type1 = 'Senescence-like',
+  annotation_type2 = 'Senescence-like'
+)
+pdf(file.path(save.path, "Senescence_change.pdf"), width = 5, height = 5)
+print(p + theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")))
+dev.off()
+p
+```
+
+Proliferating 
+```{r, results='hide', fig.width = 5, fig.height = 5}
+proliferating_markers <- c("MKI67", "TOP2A")
+p <- plot_gene_expression_violin(
+  seu_obj1 = WL_seu,
+  seu_obj2 = Cultured_seu,
+  markers = proliferating_markers,
+  annotation_type1 = 'Proliferating',
+  annotation_type2 = 'Proliferating'
+)
+pdf(file.path(save.path, "Proliferating_change.pdf"), width = 5, height = 5)
+print(p + theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")))
+dev.off()
+p
+```
+
+
+
+
+

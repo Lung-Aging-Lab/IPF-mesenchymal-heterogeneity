@@ -1,0 +1,296 @@
+---
+title: "Figure 4"
+author: "Hu Chen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, message=FALSE}
+library(CellChat)
+library(qs)
+library(ComplexHeatmap)
+library(grid)
+library(methods)
+setwd("/users/PAS2148/tiger/scRNA_analysis_code/fibroblasts")
+
+save.path <- "Fig_4_figures"
+if (!dir.exists(save.path)) {
+  dir.create(save.path, recursive = TRUE)
+}
+```
+
+```{r}
+cellchat_list <- qread("/fs/ess/PAS2148/huchen/fibroblasts_data/cellchat_list.qs")
+```
+
+
+## Fig. 4a
+```{r, results='hide', fig.width = 10, fig.height = 3}
+num.link <- sapply(cellchat_list, function(x) {rowSums(x@net$count) + colSums(x@net$count)-diag(x@net$count)})
+weight.MinMax <- c(min(num.link), max(num.link)) # control the dot size in the different datasets
+gg <- list()
+for (i in 1:length(cellchat_list)) {
+  gg[[i]] <- netAnalysis_signalingRole_scatter(cellchat_list[[i]], title = names(cellchat_list)[i], weight.MinMax = weight.MinMax)
+}
+
+xr <- range(unlist(lapply(gg, function(p) ggplot2::ggplot_build(p)$layout$panel_params[[1]]$x.range)))
+yr <- range(unlist(lapply(gg, function(p) ggplot2::ggplot_build(p)$layout$panel_params[[1]]$y.range)))
+
+gg <- lapply(gg, function(p) p + ggplot2::coord_cartesian(xlim = xr, ylim = yr))
+
+p <- patchwork::wrap_plots(plots = gg)
+
+pdf(file.path(save.path, "CCC_scatter_plot.pdf"), width = 10, height = 3)
+print(p)
+dev.off()
+p
+```
+
+
+## Fig. 4b
+```{r, message=FALSE, warning=FALSE, fig.width = 6.5, fig.height = 5}
+# --- Helper: reproduce CellChat's internal top/right bar values (same as CellChat source logic)
+.get_role_bars <- function(object, signaling = NULL,
+                           pattern = c("outgoing", "incoming", "all"),
+                           slot.name = "netP") {
+  pattern <- match.arg(pattern)
+  
+  centr <- slot(object, slot.name)$centr
+  outgoing <- matrix(
+    0,
+    nrow = nlevels(object@idents),
+    ncol = length(centr),
+    dimnames = list(levels(object@idents), names(centr))
+  )
+  incoming <- outgoing
+  
+  for (i in seq_along(centr)) {
+    outgoing[, i] <- centr[[i]]$outdeg
+    incoming[, i] <- centr[[i]]$indeg
+  }
+  
+  if (pattern == "outgoing") mat <- t(outgoing)
+  if (pattern == "incoming") mat <- t(incoming)
+  if (pattern == "all")      mat <- t(outgoing + incoming)
+  
+  if (!is.null(signaling)) {
+    mat1 <- mat[rownames(mat) %in% signaling, , drop = FALSE]
+    mat2 <- matrix(
+      0,
+      nrow = length(signaling),
+      ncol = ncol(mat),
+      dimnames = list(signaling, colnames(mat))
+    )
+    idx <- match(rownames(mat1), signaling)
+    mat2[idx[!is.na(idx)], ] <- mat1
+    mat <- mat2
+  }
+  
+  mat.ori <- mat
+  top_bar <- colSums(mat.ori)      # top bar uses raw col sums
+  
+  # right bar uses transformed row sums in CellChat
+  pSum <- rowSums(mat.ori)
+  pSum.original <- pSum
+  pSum <- -1 / log(pSum)
+  pSum[is.na(pSum)] <- 0
+  idx1 <- which(is.infinite(pSum) | pSum < 0)
+  if (length(idx1) > 0) {
+    values.assign <- seq(max(pSum) * 1.1, max(pSum) * 1.5, length.out = length(idx1))
+    position <- sort(pSum.original[idx1], index.return = TRUE)$ix
+    pSum[idx1] <- values.assign[match(seq_along(idx1), position)]
+  }
+  right_bar <- pSum
+  
+  list(mat.ori = mat.ori, top = top_bar, right = right_bar)
+}
+
+pathway.union <- union(
+  union(cellchat_list[[1]]@netP$pathways, cellchat_list[[2]]@netP$pathways),
+  cellchat_list[[3]]@netP$pathways
+)
+# --- Wrapper: create CellChat heatmap, then override top/right annotations with fixed ylim = c(0, 10)
+netAnalysis_signalingRole_heatmap_fixed_ylim <- function(object, signaling = NULL,
+                                                         pattern = c("outgoing", "incoming", "all"),
+                                                         slot.name = "netP",
+                                                         color.use = NULL,
+                                                         color.heatmap = "BuGn",
+                                                         title = NULL,
+                                                         width = 10, height = 8,
+                                                         font.size = 8, font.size.title = 10,
+                                                         cluster.rows = FALSE, cluster.cols = FALSE,
+                                                         bar_ylim = c(0, 10)) {
+  pattern <- match.arg(pattern)
+  
+  # Get bar data FIRST to determine sort order
+  bars <- .get_role_bars(object, signaling = signaling, pattern = pattern, slot.name = slot.name)
+  
+  # Compute per-pathway total strength (row sums of the heatmap matrix)
+  pathway_order <- order(rowSums(bars$mat.ori), decreasing = TRUE)
+  sorted_signaling <- rownames(bars$mat.ori)[pathway_order]
+  
+  # Build heatmap using the SORTED pathway order
+  ht <- netAnalysis_signalingRole_heatmap(
+    object,
+    signaling = sorted_signaling,   # <-- pass sorted order instead of original
+    pattern = pattern,
+    slot.name = slot.name,
+    color.use = color.use,
+    color.heatmap = color.heatmap,
+    title = title,
+    width = width,
+    height = height,
+    font.size = font.size,
+    font.size.title = font.size.title,
+    cluster.rows = cluster.rows,
+    cluster.cols = cluster.cols
+  )
+  
+  # Re-extract bars using sorted_signaling so annotation aligns correctly
+  bars <- .get_role_bars(object, signaling = sorted_signaling, pattern = pattern, slot.name = slot.name)
+  
+  if (is.null(color.use)) {
+    color.use <- CellChat::scPalette(ncol(bars$mat.ori))
+    names(color.use) <- colnames(bars$mat.ori)
+  } else {
+    if (is.null(names(color.use))) names(color.use) <- colnames(bars$mat.ori)
+  }
+  
+  ht@top_annotation <- HeatmapAnnotation(
+    Strength = anno_barplot(
+      bars$top,
+      ylim = bar_ylim,
+      border = FALSE,
+      gp = gpar(fill = color.use, col = color.use)
+    ),
+    show_annotation_name = FALSE
+  )
+  
+  ht@right_annotation <- rowAnnotation(
+    Strength = anno_barplot(
+      bars$right,
+      ylim = bar_ylim,
+      border = FALSE
+    ),
+    show_annotation_name = FALSE
+  )
+  
+  ht
+}
+
+
+# --- Loop and save
+for (i in seq_along(cellchat_list)) {
+  
+  if (!is.null(names(cellchat_list)) && nzchar(names(cellchat_list)[i])) {
+    sample_name <- names(cellchat_list)[i]
+  } else {
+    sample_name <- paste0("Condition_", i)
+  }
+  
+  message("Processing: ", sample_name)
+  
+  ht1 <- netAnalysis_signalingRole_heatmap_fixed_ylim(
+    cellchat_list[[i]],
+    pattern = "outgoing",
+    width = 5, height = 8,
+    bar_ylim = c(0, 10),
+    signaling = pathway.union
+  )
+  ht2 <- netAnalysis_signalingRole_heatmap_fixed_ylim(
+    cellchat_list[[i]],
+    pattern = "incoming",
+    width = 5, height = 8,
+    bar_ylim = c(0, 10),
+    signaling = pathway.union
+  )
+  
+  pdf(
+    file = file.path(save.path, paste0(sample_name, "_SignalingRole.pdf")),
+    width = 6.5, height = 5
+  )
+  draw(ht1 + ht2, padding = unit(c(2, 2, 2, 2), "mm"))
+  dev.off()
+  draw(ht1 + ht2, padding = unit(c(2, 2, 2, 2), "mm"))
+}
+```
+
+## Fig. 4c, d
+```{r, results='hide', fig.width = 6, fig.height = 6, message=FALSE}
+group.dataset <- "datasets"
+control <- "Aged control"
+
+cc_UL <- mergeCellChat(
+  cellchat_list[c(control, "IPF upper lobe")],
+  add.names = c(control, "IPF upper lobe")
+)
+
+
+dim(cc_UL@data.signaling)
+
+pos.dataset   <- "IPF upper lobe"
+features.name <- "IPF_upper_lobe_vs_Aged_control"
+
+cc_UL <- identifyOverExpressedGenes(
+  cc_UL, group.dataset = group.dataset, pos.dataset = pos.dataset,
+  features.name = features.name, only.pos = FALSE,
+  thresh.pc = 0.1, thresh.fc = 0.05, thresh.p = 0.05,
+  group.DE.combined = FALSE
+)
+
+net_UL <- netMappingDEG(cc_UL, features.name = features.name, variable.all = TRUE)
+net_UL_up   <- subsetCommunication(cc_UL, net = net_UL, datasets = pos.dataset, ligand.logFC =  0.05)
+net_UL_down <- subsetCommunication(cc_UL, net = net_UL, datasets = control,     ligand.logFC = -0.05)
+
+pairLR.use.up = net_UL_up[, "interaction_name", drop = F]
+gg1 <- netVisual_bubble(cc_UL, pairLR.use = pairLR.use.up, sources.use = c("Alveolar", "Adventitial"), targets.use = c("Inflammatory"), comparison = c(1, 2),  angle.x = 90, remove.isolate = T)
+
+
+p <- netVisual_chord_gene(cellchat_list[[2]], sources.use = c("CTHRC1+"), targets.use = c("Inflammatory"), slot.name = 'net', net = net_UL_up, lab.cex = 0.8, small.gap = 3.5)
+pdf(file.path(save.path, "CCC_chord_IPF_UL_up.pdf"), width = 6, height = 6)
+print(p)
+dev.off()
+p
+
+p <- netVisual_chord_gene(cellchat_list[[2]], sources.use = c("Alveolar", "Adventitial"), targets.use = c("SMCs"), slot.name = 'net', net = net_UL_down, lab.cex = 0.8, small.gap = 3.5)
+pdf(file.path(save.path, "CCC_chord_IPF_UL_down.pdf"), width = 6, height = 6)
+print(p)
+dev.off()
+```
+
+```{r,  results='hide', fig.width = 6, fig.height = 6, message=FALSE}
+pos.dataset   <- "IPF lower lobe"
+features.name <- "IPF_lower_lobe_vs_Aged_control"
+cc_LL <- mergeCellChat(
+  cellchat_list[c(control, "IPF lower lobe")],
+  add.names = c(control, "IPF lower lobe")
+)
+
+cc_LL <- identifyOverExpressedGenes(
+  cc_LL, group.dataset = group.dataset, pos.dataset = pos.dataset,
+  features.name = features.name, only.pos = FALSE,
+  thresh.pc = 0.1, thresh.fc = 0.05, thresh.p = 0.05,
+  group.DE.combined = FALSE
+)
+
+net_LL <- netMappingDEG(cc_LL, features.name = features.name, variable.all = TRUE)
+net_LL_up   <- subsetCommunication(cc_LL, net = net_LL, datasets = pos.dataset, ligand.logFC =  0.05)
+net_LL_down <- subsetCommunication(cc_LL, net = net_LL, datasets = control,     ligand.logFC = -0.05)
+
+
+p <- netVisual_chord_gene(cellchat_list[[3]], sources.use = c("CTHRC1+"), targets.use = c("Inflammatory"), slot.name = 'net', net = net_LL_up, lab.cex = 0.8, small.gap = 3.5)
+pdf(file.path(save.path, "CCC_chord_IPF_LL_up.pdf"), width = 6, height = 6)
+print(p)
+dev.off()
+
+p <- netVisual_chord_gene(cellchat_list[[3]], sources.use = c("Inflammatory", "CTHRC1+"), targets.use = c("Peribronchial"), slot.name = 'net', net = net_LL_down, lab.cex = 0.8, small.gap = 3.5)
+pdf(file.path(save.path, "CCC_chord_IPF_LL_down.pdf"), width = 6, height = 6)
+print(p)
+dev.off()
+```
+

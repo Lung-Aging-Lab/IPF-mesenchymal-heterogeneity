@@ -1,0 +1,309 @@
+---
+title: "Supplementary Figure 3"
+author: "Hu Chen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, message=FALSE}
+library(qs)
+library(ComplexHeatmap)
+library(circlize)
+library(dplyr)
+library(Matrix)
+library(forcats)
+library(tidyr)
+library(RColorBrewer)
+library(circlize)
+library(ggpubr)
+library(rstatix)
+library(tibble)
+library(CellChat)
+library(patchwork)
+library(pheatmap)
+library(reshape2)
+library(grid)
+setwd("/users/PAS2148/tiger/scRNA_analysis_code/fibroblasts")
+
+save.path <- "Supplementary_Fig_3_figures"
+if (!dir.exists(save.path)) {
+  dir.create(save.path, recursive = TRUE)
+}
+```
+
+```{r}
+cc.merged <- qread("/fs/ess/PAS2148/huchen/fibroblasts_data/CellChat_merged.qs")
+```
+
+
+## Supplementary Fig. 3a
+```{r, results='hide', fig.width = 7, fig.height = 4}
+
+# Compare number of interactions (count) and interaction strength (weight)
+gg1 <- compareInteractions(cc.merged, show.legend = F, group = c(1,2,3))
+gg2 <- compareInteractions(cc.merged, show.legend = F, group = c(1,2,3), measure = "weight")
+
+p <- (gg1 | gg2) &
+  theme_classic() &
+  theme(
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, color = "black"),
+    axis.title = element_text(color = "black", size = 12),
+    axis.text.y = element_text(color = "black", size = 12),
+    axis.text.x = element_text(color = "black", size = 12, angle = 45, hjust = 1, vjust = 1),
+    legend.text = element_text(color = "black", size = 12),
+    legend.title = element_text(color = "black", size = 12),
+    panel.grid = element_blank(),
+    axis.line.x = element_line(color = "black", linewidth = 1, lineend = "square"),
+    axis.line.y = element_line(color = "black", linewidth = 1, lineend = "square"),
+    axis.ticks.x = element_line(color = "black", linewidth = 1),
+    axis.ticks.y = element_line(color = "black", linewidth = 1),
+    axis.ticks.length = unit(6, "pt")
+  )
+ggsave(file.path(save.path, "CCC_number_intensity_barplot.pdf"), p, width = 7, height=4)
+p
+```
+
+## Supplementary Fig. 3b
+```{r, results='hide', message=FALSE, warning=FALSE, fig.width = 4.5, fig.height=4}
+# Shows incoming/outgoing signaling changes
+# Look for red blocks (increased signaling in Upper Lobe)
+p <- netVisual_heatmap(cc.merged, comparison = c(1, 2))
+pdf(file.path(save.path, "CCC_number_heatmap_IPF_UL_vs_Control.pdf"), width = 4.5, height=4)
+print(p)
+dev.off()
+p
+p <- netVisual_heatmap(cc.merged, comparison = c(1, 2), measure = 'weight')
+pdf(file.path(save.path, "CCC_intensity_heatmap_IPF_UL_vs_Control.pdf"), width = 4.5, height=4)
+print(p)
+dev.off()
+p
+
+```
+
+
+```{r, results='hide', message=FALSE, warning=FALSE, fig.width = 4.5, fig.height=4}
+p <- netVisual_heatmap(cc.merged, comparison = c(1, 3))
+pdf(file.path(save.path, "CCC_number_heatmap_IPF_LL_vs_Control.pdf"), width = 4.5, height=4)
+print(p)
+dev.off()
+p
+
+p <- netVisual_heatmap(cc.merged, comparison = c(1, 3), measure = 'weight')
+pdf(file.path(save.path, "CCC_intensity_heatmap_IPF_LL_vs_Control.pdf"), width = 4.5, height=4)
+print(p)
+dev.off()
+p
+```
+
+## Supplementary fig. 3c, d, e, f
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 9.9, fig.height=3.5}
+cellchat_list <- qread("/fs/ess/PAS2148/huchen/fibroblasts_data/cellchat_list.qs")
+
+
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+# ---- helper: get pathway matrix (netP$prob) ----
+get_pathway_mat <- function(cc, pathway) {
+  m <- cc@netP$prob[, , pathway]
+  m <- as.matrix(m)
+  m[is.na(m)] <- 0
+  m
+}
+
+# ---- helper: combine heatmaps ----
+combine_ht <- function(ht_list) Reduce(`+`, ht_list)
+
+# ---- main: heatmap with fixed top/right bar ylim (NO rescaling) ----
+netVisual_heatmap_fixed_lims <- function(
+    cc,
+    pathway,
+    title.name = NULL,
+    color.heatmap = "Reds",
+    color.use = NULL,
+    remove.isolate = FALSE,
+    cluster.rows = FALSE,
+    cluster.cols = FALSE,
+    top_ylim = c(0, 10),       # top bar fixed range
+    right_ylim = c(0, 10),     # right bar fixed range (anno_barplot uses ylim here too)
+    heatmap_max = NULL,        # fix heatmap color scale across conditions if desired
+    legend.name = "Communication Prob.",
+    show_bar_axis = TRUE,
+    bar_axis_fontsize = 7
+) {
+  mat <- get_pathway_mat(cc, pathway)
+  
+  # optional: remove isolates
+  if (remove.isolate) {
+    idx1 <- which(Matrix::rowSums(mat) == 0)
+    idx2 <- which(Matrix::colSums(mat) == 0)
+    idx  <- intersect(idx1, idx2)
+    if (length(idx) > 0) mat <- mat[-idx, -idx, drop = FALSE]
+  }
+  
+  # colors for cell groups
+  if (is.null(color.use)) {
+    color.use <- CellChat::scPalette(ncol(mat))
+    names(color.use) <- colnames(mat)
+  } else {
+    if (is.null(names(color.use))) names(color.use) <- colnames(mat)
+    color.use <- color.use[colnames(mat)]
+  }
+  
+  # fixed heatmap color scale
+  if (is.null(heatmap_max)) heatmap_max <- max(mat, na.rm = TRUE)
+  heatmap_max <- max(heatmap_max, 1e-12)
+  pal <- RColorBrewer::brewer.pal(9, color.heatmap)
+  col_fun <- circlize::colorRamp2(seq(0, heatmap_max, length.out = length(pal)), pal)
+  
+  # group annotation bars (left & bottom)
+  df <- data.frame(group = colnames(mat))
+  rownames(df) <- colnames(mat)
+  
+  col_anno <- HeatmapAnnotation(
+    df = df, col = list(group = color.use), which = "column",
+    show_legend = FALSE, show_annotation_name = FALSE,
+    simple_anno_size = unit(0.2, "cm")
+  )
+  row_anno <- HeatmapAnnotation(
+    df = df, col = list(group = color.use), which = "row",
+    show_legend = FALSE, show_annotation_name = FALSE,
+    simple_anno_size = unit(0.2, "cm")
+  )
+  
+  # axis params: use gp (NOT labels_gp) to be compatible with more ComplexHeatmap versions
+  top_axis_param <- if (show_bar_axis) {
+    list(at = top_ylim, labels = top_ylim, gp = gpar(fontsize = bar_axis_fontsize))
+  } else NULL
+  
+  right_axis_param <- if (show_bar_axis) {
+    list(at = right_ylim, labels = right_ylim, gp = gpar(fontsize = bar_axis_fontsize))
+  } else NULL
+  
+  # TOP bar (vertical) -> ylim
+  ha_top <- HeatmapAnnotation(
+    Strength = anno_barplot(
+      Matrix::colSums(abs(mat)),
+      border = FALSE,
+      gp = gpar(fill = color.use, col = color.use),
+      ylim = top_ylim,
+      axis_param = top_axis_param
+    ),
+    show_annotation_name = FALSE
+  )
+  
+  # RIGHT bar -> anno_barplot still uses ylim to control range
+  ha_right <- rowAnnotation(
+    Strength = anno_barplot(
+      Matrix::rowSums(abs(mat)),
+      border = FALSE,
+      gp = gpar(fill = color.use, col = color.use),
+      ylim = right_ylim,
+      axis_param = right_axis_param
+    ),
+    show_annotation_name = FALSE
+  )
+  
+  # show zeros as white (visual only)
+  mat_plot <- mat
+  if (sum(abs(mat_plot) > 0, na.rm = TRUE) != 1) mat_plot[mat_plot == 0] <- NA
+  
+  Heatmap(
+    mat_plot,
+    col = col_fun,
+    na_col = "white",
+    name = legend.name,
+    bottom_annotation = col_anno,
+    left_annotation   = row_anno,
+    top_annotation    = ha_top,
+    right_annotation  = ha_right,
+    cluster_rows = cluster.rows,
+    cluster_columns = cluster.cols,
+    column_title = title.name %||% paste0(pathway, " signaling network"),
+    column_title_gp = gpar(fontsize = 10),
+    column_names_rot = 90,
+    row_title = "Sources (Sender)",
+    row_title_gp = gpar(fontsize = 10),
+    row_title_rot = 90,
+    row_names_gp = gpar(fontsize = 8),
+    column_names_gp = gpar(fontsize = 8),
+    row_title_side = "left",
+    row_names_side = "left"
+  )
+}
+
+# =========================
+# CALLING + SAVING CODE
+# =========================
+
+pathways.show.list <- c("COLLAGEN", "LAMININ", "FN1", "TENASCIN")
+
+
+# per-pathway custom limits
+top_ylim_by_pathway <- list(
+  COLLAGEN = c(0, 10),
+  LAMININ  = c(0, 2),
+  FN1      = c(0, 1),
+  TENASCIN = c(0, 0.3)
+)
+
+right_xlim_by_pathway <- list(
+  COLLAGEN = c(0, 4),
+  LAMININ  = c(0, 1.5),
+  FN1      = c(0, 0.8),
+  TENASCIN = c(0, 0.2)
+)
+
+
+default_gap <- unit(0.5, "cm")
+
+for (pathway in pathways.show.list) {
+  
+  top_ylim   <- top_ylim_by_pathway[[pathway]]   %||% c(0, 10)
+  right_ylim <- right_xlim_by_pathway[[pathway]] %||% c(0, 10)
+  
+  # unify heatmap color scale across conditions for THIS pathway
+  mats <- lapply(cellchat_list, get_pathway_mat, pathway = pathway)
+  heatmap_max_global <- max(unlist(mats), na.rm = TRUE)
+  heatmap_max_global <- max(heatmap_max_global, 1e-12)
+  
+  ht_list <- vector("list", length(cellchat_list))
+  
+  for (i in seq_along(cellchat_list)) {
+    
+    cond_name <- if (!is.null(names(cellchat_list)) && nzchar(names(cellchat_list)[i])) {
+      names(cellchat_list)[i]
+    } else {
+      paste0("Condition_", i)
+    }
+    
+    ht_list[[i]] <- netVisual_heatmap_fixed_lims(
+      cc = cellchat_list[[i]],
+      pathway = pathway,
+      title.name = paste0(pathway, " signaling: ", cond_name),
+      color.heatmap = "Reds",
+      top_ylim = top_ylim,
+      right_ylim = right_ylim,
+      heatmap_max = heatmap_max_global,   # same color scale across conditions
+      show_bar_axis = TRUE,
+      bar_axis_fontsize = 7
+    )
+  }
+  
+  pdf(
+    file = file.path(save.path, paste0("netVisual_heatmap_", pathway, ".pdf")),
+    width = 3.3 * length(ht_list),
+    height = 3.5
+  )
+  draw(combine_ht(ht_list), ht_gap = default_gap)
+  dev.off()
+  draw(combine_ht(ht_list), ht_gap = default_gap)
+}
+```
+
+

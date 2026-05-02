@@ -1,0 +1,104 @@
+---
+title: "Fig 6f"
+author: "Hu Chen"
+date: '`r Sys.Date()`'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(Seurat)
+library(ggplot2)
+library(qs)
+library(scCustomize)
+library(ggpubr)
+library(tidyr)
+library(tibble)
+source("/users/PAS2148/tiger/Tigerrr07/scripts/R_scripts/Heatmap.R")
+Cultured_seu <- qread("/fs/ess/PAS2148/huchen/fibroblasts_data/Cultured_fibroblasts_aucell.qs")
+
+setwd("/users/PAS2148/tiger/scRNA_analysis_code/fibroblasts")
+
+save.path <- "Fig_6_figures"
+if (!dir.exists(save.path)) {
+  dir.create(save.path, recursive = TRUE)
+}
+```
+
+```{r}
+anno_colors <- list(
+  Annotation = c(
+    "Alveolar 1" = "#3CA5D1",
+    "Alveolar 2" = "#aacee6",
+    "Adventitial" = "#8D8DC3",
+    "Inflammatory" = "#EF9F80",
+    "SMCs" = "#D28088",
+    "Proliferating" = "#9CC7BC",
+    "Senescence-like" = "#FDE3B3"
+  ),
+  Passage = c("Initial" = "#abddee",
+              "Final" = "#dd43a2"),
+  Protocol = c("WLCS" = "#2027c7", "Negative Fraction" = "#e4b075",  "Outgrowth"= "#cdb2ef"),
+  Condition = c(
+    "Aged control" = "#717e8d",
+    "IPF upper lobe" = "#8ca252",
+    "IPF lower lobe" = "#ae8ba2"
+  )
+)
+
+collagen_gene_dict <- list(
+  "Anchoring" = c("COL13A1"),
+  "Basement membrane-associated" = c("COL21A1", "COL22A1"),
+  "Fibril-associated (FACITs)" = c("COL14A1", "COL15A1", "COL16A1"),
+  "Fibrillar" = c("COL1A1", "COL1A2", "COL2A1", "COL3A1", "COL5A1", "COL5A2", "COL6A1", "COL7A1"),
+  "Network-forming" = c("COL8A1", "COL10A1", "COL11A1", "COL12A1"),
+  "Other fibril-associated" = c("COL23A1", "COL24A1", "COL25A1", "COL26A1", "COL27A1", "COL28A1"),
+  "Transmembrance" = c("COL17A1", "COL18A1", "COL19A1"),
+  "CTHRC1" = "CTHRC1"
+)
+
+collagen_colors =c(
+  "Anchoring" = "#b383b9",
+  "Basement membrane-associated" = "#f4c17b",
+  "Fibril-associated (FACITs)" = "#d2eac8",
+  "Fibrillar" = "#f5cfe4",
+  "Network-forming" = "#d9d9d9",
+  "Other fibril-associated" = "#bbde93",
+  "Transmembrance" = "#fcee82",
+  "CTHRC1" = "#FF5919"
+)
+
+
+mmp_gene_dict <- list(
+  "Collagenase" = c("MMP1", "MMP8", "MMP13"),
+  "Gelatinase" = c("MMP2", "MMP9"),
+  "Matrilysin" = c("MMP7"),
+  "Membrane-type metallproteinases" = c("MMP14", "MMP15", "MMP16", "MMP17", "MMP24", "MMP25"),
+  "Other MMPs" = c("MMP12", "MMP19", "MMP21", "MMP27", "MMP28"),
+  "Stromelysin" = c("MMP3", "MMP10", "MMP11")
+)
+
+mmp_colors =c(
+  "Collagenase" = "#9dd1c7",
+  "Gelatinase" = "#ffffbc",
+  "Matrilysin" = "#eb8777",
+  "Membrane-type metallproteinases" = "#8ab0d0",
+  "Other MMPs" = "#f2b770",
+  "Stromelysin" = "#bdbad7"
+)
+```
+
+```{r, fig.width = 9.5, fig.height = 7.9}
+colors = c("#53b1dc", "#D9D9D9", "#D0021B")
+scHeatmap(Cultured_seu, features = collagen_gene_dict, 
+          group.by = c("Annotation", "Protocol"),
+          anno_colors = anno_colors, width = 9.5, height = 7.9, colors = colors,
+          custom_set_colors = collagen_colors,
+                    save_path = file.path(save.path, "Culture_Protocol_Collagen_heatmap.pdf")
+          )
+```
+
+

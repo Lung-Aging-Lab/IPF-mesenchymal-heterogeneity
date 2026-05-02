@@ -1,0 +1,60 @@
+---
+title: "Supplementary Figure 4ab"
+author: "Hu Chen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Supplementary Fig. 4a
+```{r, message=FALSE}
+library(Seurat)
+library(ggplot2)
+library(qs)
+library(scCustomize)
+library(ggpubr)
+library(tidyr)
+library(tibble)
+source("/users/PAS2148/tiger/Tigerrr07/scripts/R_scripts/Heatmap.R")
+Cultured_seu <- qread("/fs/ess/PAS2148/huchen/fibroblasts_data/Cultured_fibroblasts.qs")
+
+setwd("/users/PAS2148/tiger/scRNA_analysis_code/fibroblasts")
+
+save.path <- "Supplementary_Fig_4_figures"
+if (!dir.exists(save.path)) {
+  dir.create(save.path, recursive = TRUE)
+}
+```
+
+```{r, message=FALSE, fig.width = 8.5, fig.height  = 4.5}
+sample_colors <- c(
+  "#f5be82", "#a7dd92", "#f19d99", "#c1b1d2", "#be9e96", "#edb9d1",
+  "#dbdb96", "#abd8e3", "#393b75", "#677841",
+
+  "#3b75af", "#519e3e", "#8d69b8", "#58bbcc", "#d57bbd", "#bcbd45"
+)
+
+p <- DimPlot_scCustom(Cultured_seu, group.by = "Protocol_Passage_Condition",
+                      colors_use = sample_colors)
+ggsave(file.path(save.path, "Cultured_UMAP_Protocol_Passage_Condition.pdf"), p, width = 8.5, height  = 4.5)
+print(p)
+```
+
+## Supplementary Fig. 4b
+```{r, warning=FALSE, message=FALSE, fig.width = 20, fig.height  = 16}
+colors <- c('#3CA5D1', '#aacee6', '#8D8DC3', '#EF9F80', '#D28088','#9CC7BC', '#FDE3B3')
+
+p <- DimPlot_scCustom(Cultured_seu, group.by = "annotation", split.by = 'Protocol_Passage_Condition',
+                      colors_use = colors, num_columns = 4) +
+  theme(
+    strip.text = element_text(size = 5),
+    plot.title = element_text(size = 5)
+  )
+p
+ggsave(file.path(save.path, "Cultured_UMAP_seprate.pdf"), p, width = 20, height  = 16)
+
+```
+
