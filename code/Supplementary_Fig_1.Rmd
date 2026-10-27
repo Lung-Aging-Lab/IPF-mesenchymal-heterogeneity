@@ -1,0 +1,200 @@
+---
+title: "Supplymentary Figure 1"
+author: "Hu Chen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(Seurat)
+library(ggplot2)
+library(qs)
+library(scCustomize)
+library(ggpubr)
+source("Heatmap.R")
+WL_seu <- qread("../data/WL_fibroblasts.qs")
+
+setwd(".")
+
+save.path <- "../results/Supplementary_Fig_1_figures"
+if (!dir.exists(save.path)) {
+  dir.create(save.path, recursive = TRUE)
+}
+```
+
+## Supplementary Fig. 1a
+```{r, fig.width=5.2, fig.height=3, message=FALSE}
+
+sample_id_colors <- c(
+  # Aged matched Ctr
+  "#f5be82", "#a7dd92", "#f19d99", "#c1b1d2", "#be9e96", "#edb9d1",
+  "#dbdb96", "#abd8e3", "#393b75", "#677841",
+  # IPF UL 
+  "#ef8636", "#c53a32", "#7d4e42", "#b3c6e5", "#7f7f7f", "#00be57", "#e74c3c",
+  
+  # IPF LL
+  "#3b75af", "#519e3e", "#8d69b8", "#58bbcc", "#d57bbd", "#bcbd45", "#16a085"
+)
+p <- DimPlot_scCustom(WL_seu, group.by = "sample_id",
+                      colors_use = sample_id_colors) +
+  labs(title = NULL)
+p
+ggsave(file.path(save.path, "WL_UMAP_sample_id.pdf"), p, width = 5.2, height  = 3)
+```
+
+## Supplementary Fig. 1b
+```{r, fig.width=5.5, fig.height=6.5}
+
+# WL_seu$annotation SMCs -> SMC
+anno_colors <- list(
+  annotation = c(
+    "Alveolar" = "#3CA5D1",
+    "Adventitial" = "#8D8DC3",
+    "Inflammatory" = "#EF9F80",
+    "SMC" = "#D28088",
+    "CTHRC1+" = "#FF5919",
+    "Peribronchial" = "#58A456"
+
+  ),
+  Condition = c(
+    "Aged control" = "#717e8d",
+    "IPF upper lobe" = "#8ca252",
+    "IPF lower lobe" = "#ae8ba2"
+  )
+)
+
+fibroblast_markers_list <- c(
+    "NPNT", "CES1", "WNT2", "TCF21", "INMT", "FIBIN",
+  "MFAP5", "SCARA5", "PTGIS", "IGFBP6", "SFRP2", "PI16",
+  "AOC3", "GPM6B", "SCN7A", "FMO2", "CYP4B1", "LIMCH1",
+  "FGFR4", "ITGA8", "RARRES2", "GPC3",
+  "CCL2", "CXCL12", "HAS2", "PTGDS",
+  "MYH11", "ACTA2", "LMOD1", "MYL9",
+  "CTHRC1", "TGFB1", "POSTN", "COL10A1",
+  "WIF1", "FGF18", "ASPN"
+)
+
+colors <- c("#53b1dc", "#FFFFFF", "#EE6677")
+scHeatmap(WL_seu, features = fibroblast_markers_list, 
+          group.by = c("annotation", "Condition"),
+          anno_colors = anno_colors, width = 5.5, height = 6.5, colors = colors,
+                    save_path = file.path(save.path, "marker_genes_annotation_Condition_heatmap.pdf")
+)
+
+```
+
+
+## Supplementary Fig. 1c
+```{r, fig.width=5, fig.height=3, message=FALSE, warning=FALSE}
+library(ggpubr)
+my_comparisons <- list(
+  c("Aged control", "IPF upper lobe"),
+  c("Aged control", "IPF lower lobe")
+)
+
+cthrc1 <- subset(WL_seu, subset = annotation == "CTHRC1+")
+
+p <- VlnPlot(
+  cthrc1,
+  features = "CTHRC1",
+  group.by = "Condition",
+  cols = anno_colors$Condition,
+  combine = FALSE
+)[[1]] +
+  theme(axis.title.x = element_blank(),
+  axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  ) +
+  stat_compare_means(
+    comparisons = my_comparisons,
+    method = "wilcox.test",
+    label = "p.signif",
+    size = 6,
+    vjust = 0.5
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))
+
+print(p)
+ggsave(file.path(save.path, "CTHRC1_violin_Condition.pdf"), p, width = 5,height = 3)
+
+
+p <- VlnPlot(
+  cthrc1,
+  features = "COL1A1",
+  group.by = "Condition",
+  cols = anno_colors$Condition,
+  combine = FALSE
+)[[1]] +
+  theme(axis.title.x = element_blank(),
+  axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()) +
+  stat_compare_means(
+    comparisons = my_comparisons,
+    method = "wilcox.test",
+    label = "p.signif",
+    size = 6,
+    vjust = 0.5
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))
+
+print(p)
+ggsave(file.path(save.path, "COL1A1_violin_Condition.pdf"), p, width = 5,height = 3)
+
+
+```
+
+## Supplementary Fig. 1d
+```{r, fig.width=5, fig.height=3, message=FALSE}
+plot_vln <- function(seu, condition, feature, comparisons = NULL) {
+  p <- VlnPlot(
+    subset(seu, subset = Condition == condition),
+    features = feature,
+    group.by = "annotation",
+    cols = anno_colors$annotation,
+    combine = FALSE
+  )[[1]] +
+    theme(
+      axis.title.x = element_blank(),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank()
+    ) +
+    coord_cartesian(ylim = c(0, 8)) +
+    scale_y_continuous(expand = expansion(mult = c(0.15, 0.25)))
+  
+  if (!is.null(comparisons)) {
+    p <- p + stat_compare_means(
+      comparisons = comparisons,
+      method = "wilcox.test",
+      label = "p.signif",
+      size = 6,
+      vjust = 0.5
+    )
+  }
+  
+  ggsave(
+    file.path(save.path, paste0(feature, "_violin_", gsub(" ", "_", condition), ".pdf")),
+    p,
+    width = 5,
+    height = 3
+  )
+  
+  p
+}
+
+my_comparisons <- list(
+  c("Alveolar", "CTHRC1+"),
+  c("SMC", "CTHRC1+")
+)
+
+p1 <- plot_vln(WL_seu, "Aged control", "COL1A1", my_comparisons)
+p1
+p2 <- plot_vln(WL_seu, "IPF upper lobe", "COL1A1", my_comparisons)
+p2
+p3 <- plot_vln(WL_seu, "IPF lower lobe", "COL1A1", my_comparisons)
+p3
+```
+

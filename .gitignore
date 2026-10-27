@@ -6,3 +6,6 @@ __pycache__/
 *.ipynb_checkpoints/
 # Directories whose name ends with "figures"
 *figures/
+
+/old_codes/
+/old_figures/
